@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>David</title>
+<style>
+  /* Basic page setup. Center the chat card on the page. */
+  body {
+    margin: 0;
+    background-color: #f0f2f5;
+    font-family: Arial, Helvetica, sans-serif;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* The chat card holds everything: header, messages, and input row. */
+  .chat-card {
+    width: 100%;
+    max-width: 480px;
+    height: 100vh;
+    background-color: white;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+
+  .chat-header {
+    background-color: #2f6690;
+    color: white;
+    padding: 16px;
+    font-size: 18px;
+    font-weight: bold;
+  }
+
+  /* The message area scrolls when there are a lot of messages. */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* A single chat bubble. Bot and user bubbles share this base style. */
+  .message {
+    max-width: 75%;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    line-height: 1.4;
+    white-space: pre-line;
+  }
+
+  /* Bot messages sit on the left in gray. */
+  .bot-message {
+    align-self: flex-start;
+    background-color: #e4e6eb;
+    color: #050505;
+  }
+
+  /* User messages sit on the right in blue. */
+  .user-message {
+    align-self: flex-end;
+    background-color: #2f80ed;
+    color: white;
+  }
+
+  /* The row of quick-reply buttons that appears under a bot message. */
+  .quick-replies {
+    align-self: flex-start;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .quick-reply-btn {
+    padding: 8px 14px;
+    border-radius: 16px;
+    border: 1px solid #2f6690;
+    background-color: white;
+    color: #2f6690;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .quick-reply-btn:hover {
+    background-color: #2f6690;
+    color: white;
+  }
+
+  .chat-input-row {
+    display: flex;
+    padding: 12px;
+    border-top: 1px solid #ddd;
+  }
+
+  #textInput {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  #sendBtn {
+    margin-left: 8px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    background-color: #2f6690;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="chat-card">
+    <div class="chat-header">David</div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="textInput" placeholder="Type your message..." onkeydown="if (event.key === 'Enter') { sendMessage(); }">
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+<script>
+  // All fake package data lives here. Three packages, one per status.
+  const packages = {
+    "ORD123456": { status: "in transit", eta: "July 22", location: "Oakland, CA" },
+    "ORD234567": { status: "delayed", eta: "July 25", reason: "weather delay" },
+    "ORD345678": { status: "delivered", deliveredOn: "July 17", location: "front door" }
+  };
+
+  // step keeps track of where we are in the conversation.
+  // It starts at "askTracking" because the first thing we need is a tracking number.
+  var step = "askTracking";
+
+  // failCount counts bad tracking numbers in a row.
+  var failCount = 0;
+
+  // Adds a gray bot bubble on the left side of the chat.
+  function botSay(message) {
+    var messagesDiv = document.getElementById("chatMessages");
+    var bubble = document.createElement("div");
+    bubble.className = "message bot-message";
+    bubble.textContent = message;
+    messagesDiv.appendChild(bubble);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // Adds a blue user bubble on the right side of the chat.
+  function userSay(message) {
+    var messagesDiv = document.getElementById("chatMessages");
+    var bubble = document.createElement("div");
+    bubble.className = "message user-message";
+    bubble.textContent = message;
+    messagesDiv.appendChild(bubble);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // Shows a row of quick-reply buttons under the last bot message.
+  // Clicking a button acts just like typing its label and hitting send.
+  function showButtons(list) {
+    var repliesDiv = document.createElement("div");
+    repliesDiv.className = "quick-replies";
+
+    for (var i = 0; i < list.length; i++) {
+      var btn = document.createElement("button");
+      btn.className = "quick-reply-btn";
+      btn.textContent = list[i];
+      btn.onclick = function () {
+        var label = this.textContent;
+        this.parentElement.remove();
+        userSay(label);
+        handleUserInput(label);
+      };
+      repliesDiv.appendChild(btn);
+    }
+
+    var messagesDiv = document.getElementById("chatMessages");
+    messagesDiv.appendChild(repliesDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // Makes up a fake case number, like CASE-4821.
+  function makeCaseNumber() {
+    var randomNumber = Math.floor(Math.random() * 9000) + 1000;
+    return "CASE-" + randomNumber;
+  }
+
+  // Shows the closing question and buttons, and moves us to the closing step.
+  function askClosingQuestion() {
+    botSay("Anything else?");
+    showButtons(["Track another package", "No thanks"]);
+    step = "askAnythingElse";
+  }
+
+  // brain of the bot. It looks at "step" to decide what the
+  // user's message means, and what to do about it.
+  function handleUserInput(text) {
+    text = text.trim();
+    if (text === "") {
+      return;
+    }
+
+    if (step === "askTracking") {
+      var pkg = packages[text];
+
+      var validFormat = /^ORD\d{6}$/.test(text);
+
+      if (validFormat && pkg) {
+        failCount = 0;
+
+        if (pkg.status === "in transit") {
+          botSay("Status: In transit\nLocation: " + pkg.location + "\nETA: " + pkg.eta);
+          askClosingQuestion();
+        } else if (pkg.status === "delayed") {
+          botSay("Status: Delayed\nReason: " + pkg.reason + "\nNew ETA: " + pkg.eta);
+          askClosingQuestion();
+        } else if (pkg.status === "delivered") {
+          botSay("Status: Delivered\nDate: " + pkg.deliveredOn + "\nLocation: " + pkg.location);
+          botSay("Did you receive it?");
+          showButtons(["Yes", "No"]);
+          step = "askReceived";
+        }
+      } else {
+        failCount = failCount + 1;
+
+        if (failCount >= 3) {
+          var caseNumber = makeCaseNumber();
+          botSay("Not found. Connecting you to an agent. Case: " + caseNumber);
+          askClosingQuestion();
+        } else {
+          botSay("Not found. Example: ORD123456. Try again.");
+        }
+      }
+    }
+
+    else if (step === "askReceived") {
+      var lowerText = text.toLowerCase();
+      if (text === "Yes" || lowerText.indexOf("yes") !== -1) {
+        askClosingQuestion();
+      } else if (text === "No" || lowerText.indexOf("no") !== -1) {
+        var caseNumber = makeCaseNumber();
+        botSay("Sorry. An agent will contact you within 24 hours. Case: " + caseNumber);
+        askClosingQuestion();
+      } else {
+        botSay("Use the buttons. Did you receive it?");
+        showButtons(["Yes", "No"]);
+      }
+    }
+
+    else if (step === "askAnythingElse") {
+      var lowerText = text.toLowerCase();
+      if (text === "Track another package" || lowerText.indexOf("yes") !== -1) {
+        failCount = 0;
+        botSay("Tracking number?");
+        step = "askTracking";
+      } else if (text === "No thanks" || lowerText.indexOf("no") !== -1) {
+        botSay("Thanks, bye!");
+      } else {
+        botSay("Use the buttons. Anything else?");
+        showButtons(["Track another package", "No thanks"]);
+      }
+    }
+  }
+
+  // Reads the text box, shows it as a user message, and passes it to the bot.
+  function sendMessage() {
+    var input = document.getElementById("textInput");
+    var text = input.value;
+    if (text.trim() === "") {
+      return;
+    }
+    userSay(text);
+    input.value = "";
+    handleUserInput(text);
+  }
+
+  // Kick off the conversation as soon as the page loads.
+  botSay("Hi, I'm David.");
+  botSay("Tracking number?");
+</script>
+
+</body>
+</html>
